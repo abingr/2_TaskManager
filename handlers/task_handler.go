@@ -1,82 +1,123 @@
 package handlers
 
 import (
+	"2_TaskManager/db"
 	"2_TaskManager/models"
-	"2_TaskManager/store"
-	"fmt"
+	"context"
+	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
 
 func CreateTask(c *gin.Context) {
 
-	var newTask models.Task
+	var task models.Task
 
-	if err := c.ShouldBindJSON(&newTask); err != nil {
+	if err := c.ShouldBindJSON(&task); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	newTask.ID = store.NextID
-	store.NextID++
+	query := "INSERT INTO tasks (title, completed) VALUES ($1, $2) RETURNING id"
 
-	store.Tasks = append(store.Tasks, newTask)
+	err := db.Conn.QueryRow(context.Background(),
+		query, task.Title, task.Completed).Scan(&task.ID)
 
-	c.JSON(http.StatusCreated, newTask)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, task)
 }
 
 func GetTasks(c *gin.Context) {
-	c.JSON(http.StatusOK, store.Tasks)
+
+	log.Println("Fetching tasks...")
+
+	rows, err := db.Conn.Query(context.Background(),
+		"SELECT id, title, completed FROM tasks")
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
+		return
+	}
+
+	defer rows.Close()
+
+	var tasks []models.Task
+
+	for rows.Next() {
+		var task models.Task
+		log.Println("Row found")
+		err := rows.Scan(&task.ID, &task.Title, &task.Completed)
+		if err != nil {
+			continue
+		}
+
+		tasks = append(tasks, task)
+	}
+
+	c.JSON(http.StatusOK, tasks)
 }
 
 func GetTaskByID(c *gin.Context) {
 	id := c.Param("id")
 
-	for _, task := range store.Tasks {
-		if id == fmt.Sprint(task.ID) {
-			c.JSON(http.StatusOK, task)
-			return
-		}
+	var task models.Task
+
+	err := db.Conn.QueryRow(context.Background(),
+		"SELECT id, title, completed FROM tasks WHERE id=$1", id).Scan(&task.ID, &task.Title, &task.Completed)
+
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		return
 	}
 
-	c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+	c.JSON(http.StatusOK, task)
 }
 
 func UpdateTask(c *gin.Context) {
 	id := c.Param("id")
 
-	var updatedTask models.Task
+	var task models.Task
 
-	if err := c.ShouldBindJSON(&updatedTask); err != nil {
+	if err := c.ShouldBindJSON(&task); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	for i, task := range store.Tasks {
-		if id == fmt.Sprint(task.ID) {
-			updatedTask.ID = task.ID
-			store.Tasks[i] = updatedTask
+	query := `
+	UPDATE tasks
+	SET title=$1, completed=$2
+	WHERE id=$3
+	`
+	_, err := db.Conn.Exec(context.Background(),
+		query, task.Title, task.Completed, id)
 
-			c.JSON(http.StatusOK, updatedTask)
-			return
-		}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
+		return
 	}
-	c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+
+	task.ID, _ = strconv.Atoi(id)
+
+	c.JSON(http.StatusOK, task)
+
 }
 
 func DeleteTask(c *gin.Context) {
 	id := c.Param("id")
 
-	for i, task := range store.Tasks {
-		if id == fmt.Sprint(task.ID) {
+	_, err := db.Conn.Exec(context.Background(),
+		"DELETE FROM tasks WHERE id=$1", id)
 
-			store.Tasks = append(store.Tasks[:i], store.Tasks[i+1:]...)
-
-			c.JSON(http.StatusOK, gin.H{"message": "Task deleted"})
-			return
-		}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
+		return
 	}
 
-	c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+	c.JSON(http.StatusOK, gin.H{"message": "Task deleted"})
 }
