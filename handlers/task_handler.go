@@ -20,10 +20,13 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
-	query := "INSERT INTO tasks (title, completed) VALUES ($1, $2) RETURNING id"
+	userIDValue, _ := c.Get("user_id")
+	userID := userIDValue.(int)
+
+	query := "INSERT INTO tasks (title, completed, user_id) VALUES ($1, $2) RETURNING id"
 
 	err := db.Conn.QueryRow(context.Background(),
-		query, task.Title, task.Completed).Scan(&task.ID)
+		query, task.Title, task.Completed, userID).Scan(&task.ID)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
@@ -37,8 +40,11 @@ func GetTasks(c *gin.Context) {
 
 	log.Println("Fetching tasks...")
 
+	userIDValue, _ := c.Get("user_id")
+	userID := userIDValue.(int)
+
 	rows, err := db.Conn.Query(context.Background(),
-		"SELECT id, title, completed FROM tasks")
+		"SELECT id, title, completed FROM tasks WHERE user_id=$1", userID)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})

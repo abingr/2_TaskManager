@@ -4,13 +4,22 @@ import (
 	"2_TaskManager/db"
 	"2_TaskManager/handlers"
 	"2_TaskManager/middleware"
+	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 func main() {
 
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	db.ConnectDB()
+	db.RunMigrations()
 
 	r := gin.Default()
 	/* Endpoints */
@@ -28,5 +37,5 @@ func main() {
 	//r.GET("/tasks/:id", handlers.GetTaskByID)   // Read
 	//r.PUT("/tasks/:id", handlers.UpdateTask)    // Update
 	//r.DELETE("/tasks/:id", handlers.DeleteTask) // Delete
-	r.Run(":8080")
+	r.Run(":" + os.Getenv("PORT"))
 }
