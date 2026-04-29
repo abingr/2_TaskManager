@@ -4,6 +4,7 @@ import (
 	"2_TaskManager/db"
 	"2_TaskManager/models"
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -22,13 +23,15 @@ func CreateTask(c *gin.Context) {
 
 	userIDValue, _ := c.Get("user_id")
 	userID := userIDValue.(int)
+	task.UserID = userID
 
-	query := "INSERT INTO tasks (title, completed, user_id) VALUES ($1, $2) RETURNING id"
+	query := "INSERT INTO tasks (title, completed, user_id) VALUES ($1, $2, $3) RETURNING id"
 
 	err := db.Conn.QueryRow(context.Background(),
-		query, task.Title, task.Completed, userID).Scan(&task.ID)
+		query, task.Title, task.Completed, task.UserID).Scan(&task.ID)
 
 	if err != nil {
+		fmt.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
 		return
 	}
@@ -44,7 +47,7 @@ func GetTasks(c *gin.Context) {
 	userID := userIDValue.(int)
 
 	rows, err := db.Conn.Query(context.Background(),
-		"SELECT id, title, completed FROM tasks WHERE user_id=$1", userID)
+		"SELECT id, title, completed, user_id FROM tasks WHERE user_id=$1", userID)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
@@ -58,7 +61,8 @@ func GetTasks(c *gin.Context) {
 	for rows.Next() {
 		var task models.Task
 		log.Println("Row found")
-		err := rows.Scan(&task.ID, &task.Title, &task.Completed)
+
+		err := rows.Scan(&task.ID, &task.Title, &task.Completed, &task.UserID)
 		if err != nil {
 			continue
 		}

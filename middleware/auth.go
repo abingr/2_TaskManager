@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -18,10 +19,17 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 		/* Extract Token and removes "Bearer " part */
-		tokenString := strings.Split(authHeader, " ")[1]
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.JSON(401, gin.H{"error": "Invalid authorization header"})
+			c.Abort()
+			return
+		}
+
+		tokenString := parts[1]
 		/* Verifies Signature, expiration and validity */
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			return []byte("mysecretkey"), nil
+			return []byte(os.Getenv("JWT_SECRET")), nil
 		})
 
 		if err != nil || !token.Valid {
