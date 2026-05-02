@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"2_TaskManager/cache"
 	"2_TaskManager/db"
 	"2_TaskManager/models"
 	"context"
@@ -36,6 +37,11 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
+	// Delete user cache after new task insert
+	cacheKey := fmt.Sprintf("tasks_user_%d", userID)
+	cache.DeleteCache(cacheKey)
+	log.Println("CACHE INVALIDATED")
+
 	c.JSON(http.StatusCreated, task)
 }
 
@@ -46,6 +52,19 @@ func GetTasks(c *gin.Context) {
 	userIDValue, _ := c.Get("user_id")
 	userID := userIDValue.(int)
 
+	cacheKey := fmt.Sprintf("tasks_user_%d", userID)
+
+	// Try cache first
+	var cachedTasks []models.Task
+	if cache.GetCachedTasks(cacheKey, &cachedTasks) {
+		log.Println("CACHE HIT")
+		c.JSON(http.StatusOK, cachedTasks)
+		return
+	}
+
+	log.Println("CACHE MISS")
+
+	// QUERY POSTGRES IF CACHE EMPTY
 	rows, err := db.Conn.Query(context.Background(),
 		"SELECT id, title, completed, user_id FROM tasks WHERE user_id=$1", userID)
 
@@ -60,8 +79,6 @@ func GetTasks(c *gin.Context) {
 
 	for rows.Next() {
 		var task models.Task
-		log.Println("Row found")
-
 		err := rows.Scan(&task.ID, &task.Title, &task.Completed, &task.UserID)
 		if err != nil {
 			continue
@@ -70,6 +87,8 @@ func GetTasks(c *gin.Context) {
 		tasks = append(tasks, task)
 	}
 
+	// SAVE RESULT INTO REDIS CACHE
+	cache.SetCachedTasks(cacheKey, tasks)
 	c.JSON(http.StatusOK, tasks)
 }
 

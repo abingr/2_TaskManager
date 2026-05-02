@@ -1,6 +1,7 @@
 package main
 
 import (
+	"2_TaskManager/cache"
 	"2_TaskManager/db"
 	"2_TaskManager/handlers"
 	"2_TaskManager/middleware"
@@ -19,6 +20,7 @@ func main() {
 	}
 
 	db.ConnectDB()
+	cache.InitRedis()
 	db.RunMigrations()
 
 	r := gin.Default()
@@ -27,7 +29,7 @@ func main() {
 	r.POST("/login", handlers.Login)
 
 	protected := r.Group("/")
-	protected.Use(middleware.AuthMiddleware())
+	protected.Use(middleware.AuthMiddleware(), middleware.RateLimitMiddleware())
 
 	protected.GET("/tasks", handlers.GetTasks)
 	protected.POST("/tasks", handlers.CreateTask)
